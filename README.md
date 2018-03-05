@@ -7,16 +7,16 @@ Basic tic-tac-toe game over logic of turn-based contract for ethereum blockchain
 
 #### Installation
 
-1. Install ganache-cli (npm install ganache-cli)
-2. Install truffle (npm install truffle)
-3. Run, example:
+1. Install ganache-cli (`npm install ganache-cli`)
+2. Install truffle (`npm install truffle`)
 
-```
-ganache-cli -b 15000000 -l 1
-truffle migrate
-npm run start
-```
+3. Start Ganache testrpc:
+`ganache-cli -l 40000000 -b 1`
 
-Interface would be server on `localhost:3000`.
+4. Apply contracts to testnet: `truffle migrate`
+
+5. Serve interface: `npm run start`
+
+Interface would be served on `localhost:3000` by default.
 
 Interface make it possible to select one of available accounts to simulate multiplayer.
