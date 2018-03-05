@@ -69,9 +69,10 @@ contract XOGame is TurnBasedGame {
         // check if sender is one of players
         require(games[gameId].player1 == msg.sender || games[gameId].player2 == msg.sender);
         // check if step is made for the same situation as was
-        for (var i = 0; i < 10; ++i) {
-          require(state[i] == gameStates[gameId].state[i]);
-        }
+        // TODO: check sigs?
+        // for (var i = 0; i < 10; ++i) {
+        //   require(state[i] == gameStates[gameId].state[i]);
+        // }
         // find opponent to msg.sender
         address opponent;
         if (msg.sender == games[gameId].player1) {
@@ -225,8 +226,8 @@ contract XOGame is TurnBasedGame {
         ScoreUpdate(game.player2, getScore(game.player2));
     }
 
-    /* This unnamed function is called whenever someone tries to send ether to the contract */
-    function () {
-        throw; // Prevents accidental sending of ether
-    }
+    // /* This unnamed function is called whenever someone tries to send ether to the contract */
+    // function () {
+    //     throw; // Prevents accidental sending of ether
+    // }
 }

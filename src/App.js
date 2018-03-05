@@ -2,6 +2,8 @@ import React, { Component } from 'react'
 import XOGameContract from '../build/contracts/XOGame.json'
 import getWeb3 from './utils/getWeb3'
 
+import { GameView } from './GameView'
+
 import './css/oswald.css'
 import './css/open-sans.css'
 import './css/pure-min.css'
@@ -19,7 +21,7 @@ class App extends Component {
             balance: 0,
             gameContract: {},
             myGames: [],
-            openGames: {},
+            openGames: [],
             selectedGame: '',
             state: '',
             game_pot: 0,
@@ -28,7 +30,7 @@ class App extends Component {
             playX: true,
             mes: '',
             to_join: '',
-            pots: {},
+            games: {},
             gameStates: {},
         }
 
@@ -38,7 +40,6 @@ class App extends Component {
         this.joinGame = this.joinGame.bind(this);
         this.checkGameState = this.checkGameState.bind(this);
         this.makeMove = this.makeMove.bind(this);
-        this.getSign = this.getSign.bind(this);
         this.selectGame = this.selectGame.bind(this);
         this.updateState = this.updateState.bind(this);
         this.getGameData = this.getGameData.bind(this);
@@ -110,28 +111,24 @@ class App extends Component {
             XOGame.deployed().then((instance) => {
                 XOGameInstance = instance
                 // Get the value from the contract to prove it worked.
-                this.setState({ gameContract: XOGameInstance, accounts: accounts})
-                return XOGameInstance.getOpenGameIds.call()
-            }).then((result) => {
-                // get list of open games
-                this.setState({openGames: result})
-                return result.map(game => {
-                    XOGameInstance.games.call(game).then(res => {
-                        let [p1, p2, a1, a2, np, winner, ended, pot] = res;
-                        return this.setState({pots: Object.assign(this.state.pots, 
-                            {[game]: {
-                                p1: p1,
-                                p2: p2,
-                                a1: a1,
-                                a2: a2,
-                                pot: pot,
-                                winner: winner,
-                                ended: ended,
-                                np: np, // next player
-                            } })});
-                    });
-                    return null;
+                const events = XOGameInstance.allEvents();
+                events.watch((err, res) => {
+                    if (err) console.log(err);
+                    else {
+                        console.log(res);
+                        switch (res.event) {
+                            case 'MakeMove':
+                                console.log(res.args)
+                                break;
+                            case 'GameStateChanged':
+                                this.checkGameState(res.args.gameId);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
                 })
+                return this.setState({ gameContract: XOGameInstance, accounts: accounts})
             }).then(() => this.updateState())
         })
     }
@@ -140,77 +137,116 @@ class App extends Component {
         this.setState({
             selectedAccountIdx: +event.target.value,
             selectedGame: '',
+            myGames: [],
+            state: '',
             balance: this.state.web3.eth.getBalance(this.state.accounts[+event.target.value]).toNumber()
-        });
-        this.updateState();
+        })
+        this.showMessage('Loading...');
+        this.updateState(this.state.accounts[+event.target.value]);
+        this.showMessage('');
+        this.forceUpdate();
     }
 
     checkGameState(game) {
         // game = game || this.state.selectedGame;
         this.showMessage('Waiting...');
+        let gameStates, games;
         return this.state.gameContract.getCurrentGameState.call(game)
             .then((result) => {
                 this.showMessage('Updated.');
-                this.setState({gameStates: Object.assign(this.state.gameStates,
-                    {[game]: result.map(n => n.toNumber())})})
-                return result.map(n => n.toNumber());
+                gameStates = this.state.gameStates;
+                gameStates[game] = result.map(n => n.toNumber());
+                return this.state.gameContract.getXPlayer.call(game);
+            }).then((result) => {
+                games = this.state.games;
+                games[game].xplayer = result;
+                return ;
+            }).then(() => {
+                this.setState({gameStates: gameStates, games: games})
+                return game;
             })
     }
 
     makeMove(pos) {
+        console.log(pos);
         let game = this.state.selectedGame;
-        if (!game.length) throw('No game selected');
-        this.state.gameContract.move(game, pos,
+        if (!game.length) this.showMessage('May be start playing first?');
+        if (this.state.games[game].nextPlayer !== this.state.accounts[this.state.selectedAccountIdx]) this.showMessage('You are wrong.');
+        this.state.gameContract.move(
+            game,
+            pos,
             {
                 from: this.state.accounts[this.state.selectedAccountIdx],
                 to: this.state.gameContract.address,
                 gas: 15000000,
             })
-        .then(() => {
+        .then((result) => {
+            console.log(result);
             this.showMessage('You have made a move!');
-            this.checkGameState(game);
-            this.claimWin(game);
-        })
+            for (var i = 0; i < result.logs.length; i++) {
+                var log = result.logs[i];
+                if (log.event === "MakeMove" && log.args.gameId === game) {
+                // We found the event!
+                break;
+                }
+            }
+        }).then(
+            () => {
+                this.checkGameState(game);
+            }
+        ).then(() => 
+            this.claimWin(game))
     }
 
     changeState(newState) {
         this.setState({
             state: newState,
-        }).then(() =>
-        this.updateState())
+        });
+        this.updateState();
     }
 
     getGameData(game) {
         return this.state.gameContract.games.call(game)
             .then(res => {
                 let [p1, p2, a1, a2, np, winner, ended, pot] = res;
-                return this.setState({pots: Object.assign(this.state.pots, 
-                    {[game]: {
-                        p1: p1,
-                        p2: p2,
-                        a1: a1,
-                        a2: a2,
-                        pot: pot,
-                        winner: winner,
-                        ended: ended,
-                        np: np, // next player
-                    } })});
+                let games = this.state.games;
+                games[game] = {
+                    player1: p1,
+                    player2: p2,
+                    alias1: a1,
+                    alias2: a2,
+                    pot: pot,
+                    winner: winner,
+                    ended: ended,
+                    nextPlayer: np, // next player
+                };
+                return this.setState({games: games});
             });
     }
     
-    updateState() {
-        this.state.gameContract.getGamesOfPlayer.call(this.state.accounts[this.state.selectedAccountIdx])
+    updateState(acc) {
+        if (!acc) {
+            acc = this.state.accounts[this.state.selectedAccountIdx];
+        }
+        // get my games
+        this.state.gameContract
+            .getGamesOfPlayer
+            .call(acc, {from: acc, to: this.state.gameContract.address})
         .then((result) => {
+            console.log(result);
             this.setState({myGames: result});
-            result.map( g => this.checkGameState(g).then(this.getGameData));
-            return this.state.gameContract.getOpenGameIds.call()
-        }).then((result) => {
+            return result.map(g => this.checkGameState(g).then(this.getGameData(g)));
+        });
+        // update open games
+        this.state.gameContract.getOpenGameIds.call().then((result) => {
+            
             // get list of open games
             this.setState({openGames: result})
             return result.map(game => 
-                this.getGameData
+                this.getGameData(game)
             )
         })
+        this.forceUpdate();
     }
 
     showMessage(mes) {
@@ -222,20 +258,36 @@ class App extends Component {
         this.showMessage('Game is initializing...')
         this.state.gameContract.initGame(
             this.state.p1_alias,
-            this.state.playX,
+            this.state.playX ? true : false,
             5,
             {
                 from: this.state.accounts[this.state.selectedAccountIdx],
                 value: this.state.game_pot * 500,
                 to: this.state.gameContract.address,
-                gas: 15000000,
+                gas: 150000000,
             }
         ).then((result) => {
             console.log(result.logs[0].args.gameId)
             this.showMessage('');
+            let game = result.logs[0].args.gameId;
+            let gameStates = this.state.gameStates;
+            gameStates[game] = [0,0,0,0,0,0,0,0,0, this.state.playX ? 1 : -1]
+            let games = this.state.games;
+            games[game] = {
+                player1: this.state.accounts[this.state.selectedAccountIdx],
+                player2: '0x000000000000000',
+                alias1: this.state.p1_alias,
+                alias2: '',
+                pot: this.state.game_pot * 500,
+                winner: '0x0000000000000',
+                ended: false,
+                nextPlayer: this.state.playX ? this.state.accounts[this.state.selectedAccountIdx] : '0x0000000000', // next player
+            }
             return this.setState({
-                selectedGame: result.logs[0].args.gameId,
-                state: 'awaiting'
+                selectedGame: game,
+                state: 'awaiting',
+                games: games,
+                gameStates: gameStates,
             })
         });
     }
@@ -248,7 +300,7 @@ class App extends Component {
             this.state.p2_alias,
             {
                 from: this.state.accounts[this.state.selectedAccountIdx],
-                value: this.state.pots[this.state.to_join].pot,
+                value: this.state.games[this.state.to_join].pot,
                 to: this.state.gameContract.address,
                 gas: 15000000,
             }
@@ -261,23 +313,6 @@ class App extends Component {
         }).catch(err => console.log(err));
     }
 
-    getSign(pos) {
-        let s = '';
-        // this.checkGameState(this.state.selectedGame).then(() => {
-        console.log(this.state.gameStates);
-        let state = this.state.gameStates[this.state.selectedGame];
-        if (state && state !== undefined) state = state[pos]; else return null;
-        if (state > 0) {
-            s = 'X'
-        } else if (state < 0) {
-            s = 'O'
-        } else {
-            s = null
-        }
-        // })
-        return s;
-    }
-
     selectGame(game) {
         this.showMessage('Loading game data...')
         this.checkGameState(game).then(() => {
@@ -287,38 +322,37 @@ class App extends Component {
     }
 
     claimWin(game) {
-        this.state.gameContract.claimWin(game,
+        this.state.gameContract.claimWin.call(game,
             { from: this.state.accounts[this.state.selectedAccountIdx],
                 to: this.state.gameContract.address,
-                gas: 15000000,
+                gas: 20000000,
             }
         ).then((result) => {
+            console.log(result.logs);
             for (var i = 0; i < result.logs.length; i++) {
                 var log = result.logs[i];
 
                 if (log.event === "GameEnded" && log.args.gameId === game) {
-                // We found the event!
-                this.setState({win: game})
-                break;
+                    // We found the event!
+                    let g = this.state.games;
+                    g[game].ended = true;
+                    g[game].winner = log.args.winner;
+                    this.setState({games: g})
+                    this.showMessage('You won!')
+                    break;
                 }
             }
-        }).catch(err => console.error(err))
+        }).catch(err => console.log('not a winner still', err))
     }
 
     render() {
-        let tableStyle = {
-            width: '50px',
-            height: '50px',
-            margin: '15px',
-            padding: '15px',
-            background: '#eee',
-            cursor: 'pointer',
-            outline: 'thin solid black'
-        }
         return (
             <div className="App" >
                 <nav className="navbar pure-menu pure-menu-horizontal">
-                    <a href="#" className="pure-menu-heading pure-menu-link">Truffle Box</a>
+                    <a href="#" className="pure-menu-heading pure-menu-link">TicTacEth</a>
+                    <a href="#" onClick={() => this.changeState('create')} className="pure-menu-heading pure-menu-link">Create New Game</a>
+                    <a href="#" onClick={() => this.changeState('join')} className="pure-menu-heading pure-menu-link">Join Game</a>
+                    <a href="#" onClick={() => this.changeState('show')} className="pure-menu-heading pure-menu-link">Show History</a>
                     <span>
                         <a href="#" className="pure-menu-heading pure-menu-link">Account: </a>
                         <select name='Account' onChange={this.changeAccount} value={""+this.state.selectedAccountIdx}>
@@ -332,56 +366,24 @@ class App extends Component {
                     <div className="pure-g">
                         <div className="pure-u-1-1">
                             <h1> Good to Go! </h1>
-                            <h2 onClick={() => this.changeState('create')} style={{color: 'blue', cursor: 'pointer'}}>Create new game!</h2>
-                            <h2 onClick={() => this.changeState('join')} style={{color: 'blue', cursor: 'pointer'}}>Join game!</h2>
-                            <h2 onClick={() => this.changeState('show')} style={{color: 'blue', cursor: 'pointer'}}>Show results!</h2>
                         </div>
                     </div>
-                    { this.state.myGames.length > 0 && this.state.myGames.map(game => <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Awaiting game: {game}<br/></span>)}
+                    { this.state.state !== 'show' && this.state.myGames.length > 0 && this.state.myGames.map(game => <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Awaiting game: {game}<br/></span>)}
+                    
                     { (this.state.state === 'awaiting') && <h3>Awaiting your opponent!</h3>}
                     { (this.state.state === 'play') && <h3>You are in game!</h3>}
-                    { (this.state.selectedGame.length > 0 && (this.state.state === 'play' || this.state.state === 'awaiting')) && (<div>
-                        <h4>Turn for: {this.getSign(9)}</h4>
-                        { (this.state.win && this.state.win === this.state.selectedGame) && <h2>You Won!</h2>}
-                        { JSON.stringify(this.state.pots[this.state.selectedGame]) }
-                        <table style={{cellborder: '10px', border: '1px solid #ccc'}}>
-                        <tbody>
-                            <tr>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][0] ? this.makeMove(0) : false}>
-                                    {this.getSign(0)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][1] ? this.makeMove(1) : false}>
-                                    {this.getSign(1)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][2] ? this.makeMove(2) : false}>
-                                    {this.getSign(2)}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][3] ? this.makeMove(3) : false}>
-                                    {this.getSign(3)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][4] ? this.makeMove(4) : false}>
-                                    {this.getSign(4)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][5] ? this.makeMove(5) : false}>
-                                    {this.getSign(5)}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][6] ? this.makeMove(6) : false}>
-                                    {this.getSign(6)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][7] ? this.makeMove(7) : false}>
-                                    {this.getSign(7)}
-                                </td>
-                                <td style={tableStyle} onClick={() => !this.state.gameStates[this.state.selectedGame][8] ? this.makeMove(8) : false}>
-                                    {this.getSign(8)}
-                                </td>
-                            </tr>
-                        </tbody>
-                        </table>
-                        </div>)}
+                    
+                    { (this.state.selectedGame.length > 0 && (this.state.state === 'play' || this.state.state === 'awaiting')) && 
+                        <GameView 
+                            gameId={this.state.selectedGame}
+                            state={this.state.gameStates[this.state.selectedGame]} 
+                            gameInfo={this.state.games[this.state.selectedGame]}
+                            player={this.state.accounts[this.state.selectedAccountIdx]}
+                            isXPlayer={this.state.games[this.state.selectedGame] && this.state.accounts[this.state.selectedAccountIdx] === this.state.games[this.state.selectedGame].xplayer}
+                            makeMove={(p) => this.makeMove(p)}
+                            />
+                    }
+                    
                     { (this.state.state === 'create' || this.state.state === '') && (
                         <form onSubmit={this.createNewGame}>
                             <h2>Create new game:</h2>
@@ -403,7 +405,7 @@ class App extends Component {
                     { (this.state.state === 'join') && (
                         <form onSubmit={this.joinGame}>
                             <h2>Join existing game:</h2>
-                            <h5>Account: {''+this.state.accounts[this.state.selectedAccountIdx]}</h5>
+                            <h5>Account: {this.state.accounts[this.state.selectedAccountIdx]}</h5>
                             <label htmlFor="p2_alias">Alias</label><br/>
                             <input onChange={this.handleInputChange}
                                 name='p2_alias' id='p2_alias' key='p2_alias' value={this.state.p2_alias} placeholder='Your alias' />
@@ -417,12 +419,16 @@ class App extends Component {
                                     name='to_join'
                                     checked={this.state.to_join === game} 
                                     onChange={this.handleInputChange}/>
-                                    P1:?, Pot: {this.state.pots[game].pot}, X:?</label><br />
+                                    P1: {this.state.games[game].alias1}, Pot: {this.state.games[game].pot.toNumber() * 2}</label><br />
                                 </div>
                             ))}
                             <button type='submit'>Join game!</button>
                         </form>
                     )}
+                    { this.state.state === 'show' && (this.state.myGames.length > 0) && this.state.myGames.map(game => 
+                        <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Game: {game}<br/>
+                            {JSON.stringify(this.state.games[game]) + '\n\n'}
+                        </span>)}
                 </main>
             </div>
         );

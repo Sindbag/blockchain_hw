@@ -35,7 +35,7 @@ library XOGameLogic {
         self.state[9] = -playerColor; // update next player color
     }
 
-    function isWinner(State storage self, int8 currPlayerColor) public returns (bool) {
+    function isWinner(State storage self, int8 other) public returns (bool) {
         // 0 1 2,
         // 3 4 5,
         // 6 7 8,
@@ -44,14 +44,14 @@ library XOGameLogic {
         // 2 5 8,
         // 0 4 8,
         // 3 5 7
-        if ((self.state[0] == self.state[1] && self.state[0] == self.state[2] && self.state[0] == currPlayerColor)
-            || (self.state[3] == self.state[4] && self.state[3] == self.state[5] && self.state[3] == currPlayerColor)
-            || (self.state[6] == self.state[7] && self.state[6] == self.state[8] && self.state[6] == currPlayerColor)
-            || (self.state[0] == self.state[3] && self.state[0] == self.state[6] && self.state[0] == currPlayerColor)
-            || (self.state[1] == self.state[4] && self.state[1] == self.state[7] && self.state[1] == currPlayerColor)
-            || (self.state[2] == self.state[5] && self.state[2] == self.state[8] && self.state[2] == currPlayerColor)
-            || (self.state[0] == self.state[4] && self.state[0] == self.state[8] && self.state[0] == currPlayerColor)
-            || (self.state[3] == self.state[5] && self.state[3] == self.state[7] && self.state[3] == currPlayerColor)) {
+        if ((self.state[0] == self.state[1] && self.state[0] == self.state[2] && self.state[0] == -other)
+            || (self.state[3] == self.state[4] && self.state[3] == self.state[5] && self.state[3] == -other)
+            || (self.state[6] == self.state[7] && self.state[6] == self.state[8] && self.state[6] == -other)
+            || (self.state[0] == self.state[3] && self.state[0] == self.state[6] && self.state[0] == -other)
+            || (self.state[1] == self.state[4] && self.state[1] == self.state[7] && self.state[1] == -other)
+            || (self.state[2] == self.state[5] && self.state[2] == self.state[8] && self.state[2] == -other)
+            || (self.state[0] == self.state[4] && self.state[0] == self.state[8] && self.state[0] == -other)
+            || (self.state[3] == self.state[5] && self.state[3] == self.state[7] && self.state[3] == -other)) {
             return true;
         }
         return false;

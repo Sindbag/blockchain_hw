@@ -321,11 +321,9 @@ contract TurnBasedGame {
     function claimTimeoutEnded(bytes32 gameId) notEnded(gameId) public {
         var game = games[gameId];
         // only for players
-        if (msg.sender != game.player1 && msg.sender != game.player2)
-            throw;
-        if (game.timeoutState == 0 || game.timeoutState == 2)
-            throw;
-        if (now < game.timeoutStarted) // change to 1 minute for tests /* [game.turnTime *] */
+        require(msg.sender == game.player1 || msg.sender == game.player2);
+        require(!(game.timeoutState == 0 || game.timeoutState == 2));
+        if (now < game.timeoutStarted + game.turnTime * 1 minutes) // change to 1 minute for tests /* [game.turnTime *] */
             throw;
         if (msg.sender == game.nextPlayer) {
             if (game.timeoutState == -2) { // draw
@@ -365,10 +363,8 @@ contract TurnBasedGame {
     function confirmGameEnded(bytes32 gameId) notEnded(gameId) public {
         var game = games[gameId];
         // only for players
-        if (msg.sender != game.player1 && msg.sender != game.player2)
-            throw;
-        if (game.timeoutState == 0)
-            throw;
+        require(msg.sender == game.player1 || msg.sender == game.player2);
+        require(game.timeoutState != 0);
         if (msg.sender != game.nextPlayer) {
             if (game.timeoutState == -2) { // draw
                 game.ended = true;
@@ -377,7 +373,7 @@ contract TurnBasedGame {
                 games[gameId].pot = 0;
                 GameEnded(gameId);
             } else {
-                throw;
+                require(false);
             }
         } else {
             if (game.timeoutState == -1) { // draw
@@ -399,7 +395,7 @@ contract TurnBasedGame {
                 }
                 GameEnded(gameId);
             } else {
-                throw;
+                require(false);
             }
         }
     }
