@@ -35,7 +35,7 @@ library XOGameLogic {
         self.state[9] = -playerColor; // update next player color
     }
 
-    function isWinner(State storage self, int8 other) public returns (bool) {
+    function isWinner(State storage self, int8 other) public constant returns (bool) {
         // 0 1 2,
         // 3 4 5,
         // 6 7 8,
@@ -52,6 +52,34 @@ library XOGameLogic {
             || (self.state[2] == self.state[5] && self.state[2] == self.state[8] && self.state[2] == -other)
             || (self.state[0] == self.state[4] && self.state[0] == self.state[8] && self.state[0] == -other)
             || (self.state[3] == self.state[5] && self.state[3] == self.state[7] && self.state[3] == -other)) {
+            return true;
+        }
+        return false;
+    }
+
+    function isPlayerWinner(State storage self, address player) public constant returns (bool) {
+        // 0 1 2,
+        // 3 4 5,
+        // 6 7 8,
+        // 0 3 6,
+        // 1 4 7,
+        // 2 5 8,
+        // 0 4 8,
+        // 3 5 7
+        int8 color = 0;
+        if (player == self.playerX) {
+            color = 1;
+        } else {
+            color = -1;
+        }
+        if (   ((self.state[0] == self.state[1]) && (self.state[0] == self.state[2]) && (self.state[0] == color))
+            or ((self.state[3] == self.state[4]) && (self.state[3] == self.state[5]) && (self.state[3] == color))
+            or ((self.state[6] == self.state[7]) && (self.state[6] == self.state[8]) && (self.state[6] == color))
+            or ((self.state[0] == self.state[3]) && (self.state[0] == self.state[6]) && (self.state[0] == color))
+            or ((self.state[1] == self.state[4]) && (self.state[1] == self.state[7]) && (self.state[1] == color))
+            or ((self.state[2] == self.state[5]) && (self.state[2] == self.state[8]) && (self.state[2] == color))
+            or ((self.state[0] == self.state[4]) && (self.state[0] == self.state[8]) && (self.state[0] == color))
+            or ((self.state[3] == self.state[5]) && (self.state[3] == self.state[7]) && (self.state[3] == color))) {
             return true;
         }
         return false;

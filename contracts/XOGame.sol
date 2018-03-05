@@ -127,6 +127,33 @@ contract XOGame is TurnBasedGame {
     //     GameStateChanged(gameId, gameStates[gameId].state);
     // }
 
+    function checkForWinner(bytes32 gameId, address winner) public returns (bool) {
+        return gameStates[gameId].isPlayerWinner(winner);
+    }
+
+    function endGameWithWinner(bytes32 gameId, address winner) public {
+        require(games[gameId].winner != 0); // Game already ended
+        require(gameStates[gameId].isPlayerWinner(winner));
+        
+        if (games[gameId].player2 == winner) {
+            // Player 1 lost, player 2 won
+            games[gameId].winner = games[gameId].player2;
+            games[gameId].player2Winnings = games[gameId].pot;
+            games[gameId].pot = 0;
+        } else if (games[gameId].player1 == winner) {
+            // Player 2 lost, player 1 won
+            games[gameId].winner = games[gameId].player1;
+            games[gameId].player1Winnings = games[gameId].pot;
+            games[gameId].pot = 0;
+        } else {
+            // Sender is not a participant of this game
+            throw;
+        }
+
+        games[gameId].ended = true;
+        GameEnded(gameId);
+    }
+
     function getCurrentGameState(bytes32 gameId) constant returns (int8[10]) {
        return gameStates[gameId].state;
     }

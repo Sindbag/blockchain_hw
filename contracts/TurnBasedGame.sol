@@ -180,7 +180,7 @@ contract TurnBasedGame {
         require(turnTime >= 5);
 
         // Generate game id based on player's addresses and current block number
-        bytes32 gameId = sha3(msg.sender, block.number);
+        bytes32 gameId = keccak256(msg.sender, block.number);
 
         games[gameId].ended = false;
         games[gameId].turnTime = turnTime;

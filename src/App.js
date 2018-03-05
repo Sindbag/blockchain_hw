@@ -99,6 +99,15 @@ class App extends Component {
             })
     }
 
+    checkIsWinner(gameId, address) {
+        this.state.gameContract.checkForWinner(gameId, address, { from: address, to: this.state.gameContract.address }).then(
+            (result) => {
+                console.log(result);
+                this.state.gameContract.endGameWithWinner(gameId, address, { from: address, to: this.state.gameContract.address });
+            }
+        ).catch((result) => console.log('not a winner', result));
+    }
+
     instantiateContract() {
         const contract = require('truffle-contract')
         const XOGame = contract(XOGameContract)
@@ -122,6 +131,10 @@ class App extends Component {
                                 break;
                             case 'GameStateChanged':
                                 this.checkGameState(res.args.gameId);
+                                this.checkIsWinner(res.args.gameId, this.state.accounts[this.state.selectedAccountIdx]);
+                                break;
+                            case 'GameEnded':
+                                console.log('game ended', res.args);
                                 break;
                             default:
                                 break;
@@ -346,12 +359,14 @@ class App extends Component {
     }
 
     render() {
+        const state = this.state.state;
         return (
             <div className="App" >
                 <nav className="navbar pure-menu pure-menu-horizontal">
                     <a href="#" className="pure-menu-heading pure-menu-link">TicTacEth</a>
                     <a href="#" onClick={() => this.changeState('create')} className="pure-menu-heading pure-menu-link">Create New Game</a>
-                    <a href="#" onClick={() => this.changeState('join')} className="pure-menu-heading pure-menu-link">Join Game</a>
+                    <a href="#" onClick={() => this.changeState('join')} className={(state === 'join' ? 'pure-menu-selected ' : '') + 
+                                                                                    "pure-menu-heading pure-menu-link"}>Join Game</a>
                     <a href="#" onClick={() => this.changeState('show')} className="pure-menu-heading pure-menu-link">Show History</a>
                     <span>
                         <a href="#" className="pure-menu-heading pure-menu-link">Account: </a>

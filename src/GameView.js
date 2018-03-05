@@ -72,6 +72,7 @@ export const GameView = ({gameId, state, gameInfo, player, isXPlayer, makeMove})
     if (!(state && state.length === 10)) {
         err = 'State is broken!';
     }
+    console.log(state);
     const nextPlayer = state[9] || '';
     const playerMap = {'1': 'X', '-1': 'O', '': '?'};
     // const myTurn = playerAddr === gameInfo.nextPlayer;
