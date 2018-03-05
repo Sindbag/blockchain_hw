@@ -298,107 +298,107 @@ contract TurnBasedGame {
         GameTimeoutStarted(gameId, game.timeoutStarted, game.timeoutState);
     }
 
-    /*
-     * The sender (waiting player) rejects the draw offered by the
-     * other (turning / current) player.
-     */
-    function rejectCurrentPlayerDraw(bytes32 gameId) notEnded(gameId) public {
-        var game = games[gameId];
-        // only for players
-        if (msg.sender != game.player1 && msg.sender != game.player2)
-            throw;
-        // only if timeout is present.
-        if (game.timeoutState != -2)
-            throw;
-        // only not playing player is able to reject a draw offer of the nextPlayer.
-        if (msg.sender == game.nextPlayer)
-            throw;
-        game.timeoutState = 0;
-        GameDrawOfferRejected(gameId);
-    }
+            /*
+             * The sender (waiting player) rejects the draw offered by the
+             * other (turning / current) player.
+             */
+            function rejectCurrentPlayerDraw(bytes32 gameId) notEnded(gameId) public {
+                var game = games[gameId];
+                // only for players
+                if (msg.sender != game.player1 && msg.sender != game.player2)
+                    throw;
+                // only if timeout is present.
+                if (game.timeoutState != -2)
+                    throw;
+                // only not playing player is able to reject a draw offer of the nextPlayer.
+                if (msg.sender == game.nextPlayer)
+                    throw;
+                game.timeoutState = 0;
+                GameDrawOfferRejected(gameId);
+            }
 
-    /* The sender claims a previously started timeout. */
-    function claimTimeoutEnded(bytes32 gameId) notEnded(gameId) public {
-        var game = games[gameId];
-        // only for players
-        require(msg.sender == game.player1 || msg.sender == game.player2);
-        require(!(game.timeoutState == 0 || game.timeoutState == 2));
-        if (now < game.timeoutStarted + game.turnTime * 1 minutes) // change to 1 minute for tests /* [game.turnTime *] */
-            throw;
-        if (msg.sender == game.nextPlayer) {
-            if (game.timeoutState == -2) { // draw
-                game.ended = true;
-                games[gameId].player1Winnings = games[gameId].pot / 2;
-                games[gameId].player2Winnings = games[gameId].pot / 2;
-                games[gameId].pot = 0;
-                GameEnded(gameId);
-            } else {
-                throw;
-            }
-        } else {
-            if (game.timeoutState == -1) { // draw
-                game.ended = true;
-                games[gameId].player1Winnings = games[gameId].pot / 2;
-                games[gameId].player2Winnings = games[gameId].pot / 2;
-                games[gameId].pot = 0;
-                GameEnded(gameId);
-            } else if (game.timeoutState == 1) { // win
-                game.ended = true;
-                game.winner = msg.sender;
-                if(msg.sender == game.player1) {
-                    games[gameId].player1Winnings = games[gameId].pot;
-                    games[gameId].pot = 0;
+            /* The sender claims a previously started timeout. */
+            function claimTimeoutEnded(bytes32 gameId) notEnded(gameId) public {
+                var game = games[gameId];
+                // only for players
+                require(msg.sender == game.player1 || msg.sender == game.player2);
+                require(!(game.timeoutState == 0 || game.timeoutState == 2));
+                if (now < game.timeoutStarted + game.turnTime * 1 minutes) // change to 1 minute for tests /* [game.turnTime *] */
+                    throw;
+                if (msg.sender == game.nextPlayer) {
+                    if (game.timeoutState == -2) { // draw
+                        game.ended = true;
+                        games[gameId].player1Winnings = games[gameId].pot / 2;
+                        games[gameId].player2Winnings = games[gameId].pot / 2;
+                        games[gameId].pot = 0;
+                        GameEnded(gameId);
+                    } else {
+                        throw;
+                    }
                 } else {
-                    games[gameId].player2Winnings = games[gameId].pot;
-                    games[gameId].pot = 0;
+                    if (game.timeoutState == -1) { // draw
+                        game.ended = true;
+                        games[gameId].player1Winnings = games[gameId].pot / 2;
+                        games[gameId].player2Winnings = games[gameId].pot / 2;
+                        games[gameId].pot = 0;
+                        GameEnded(gameId);
+                    } else if (game.timeoutState == 1) { // win
+                        game.ended = true;
+                        game.winner = msg.sender;
+                        if(msg.sender == game.player1) {
+                            games[gameId].player1Winnings = games[gameId].pot;
+                            games[gameId].pot = 0;
+                        } else {
+                            games[gameId].player2Winnings = games[gameId].pot;
+                            games[gameId].pot = 0;
+                        }
+                        GameEnded(gameId);
+                    } else {
+                        throw;
+                    }
                 }
-                GameEnded(gameId);
-            } else {
-                throw;
             }
-        }
-    }
 
-    /* A timeout can be confirmed by the non-initializing player. */
-    function confirmGameEnded(bytes32 gameId) notEnded(gameId) public {
-        var game = games[gameId];
-        // only for players
-        require(msg.sender == game.player1 || msg.sender == game.player2);
-        require(game.timeoutState != 0);
-        if (msg.sender != game.nextPlayer) {
-            if (game.timeoutState == -2) { // draw
-                game.ended = true;
-                games[gameId].player1Winnings = games[gameId].pot / 2;
-                games[gameId].player2Winnings = games[gameId].pot / 2;
-                games[gameId].pot = 0;
-                GameEnded(gameId);
-            } else {
-                require(false);
-            }
-        } else {
-            if (game.timeoutState == -1) { // draw
-                game.ended = true;
-                games[gameId].player1Winnings = games[gameId].pot / 2;
-                games[gameId].player2Winnings = games[gameId].pot / 2;
-                games[gameId].pot = 0;
-                GameEnded(gameId);
-            } else if (game.timeoutState == 1 || game.timeoutState == 2) { // win
-                game.ended = true;
-                if (msg.sender == game.player1) {
-                    game.winner = game.player2;
-                    games[gameId].player2Winnings = games[gameId].pot;
-                    games[gameId].pot = 0;
+            /* A timeout can be confirmed by the non-initializing player. */
+            function confirmGameEnded(bytes32 gameId) notEnded(gameId) public {
+                var game = games[gameId];
+                // only for players
+                require(msg.sender == game.player1 || msg.sender == game.player2);
+                require(game.timeoutState != 0);
+                if (msg.sender != game.nextPlayer) {
+                    if (game.timeoutState == -2) { // draw
+                        game.ended = true;
+                        games[gameId].player1Winnings = games[gameId].pot / 2;
+                        games[gameId].player2Winnings = games[gameId].pot / 2;
+                        games[gameId].pot = 0;
+                        GameEnded(gameId);
+                    } else {
+                        require(false);
+                    }
                 } else {
-                    game.winner = game.player1;
-                    games[gameId].player1Winnings = games[gameId].pot;
-                    games[gameId].pot = 0;
+                    if (game.timeoutState == -1) { // draw
+                        game.ended = true;
+                        games[gameId].player1Winnings = games[gameId].pot / 2;
+                        games[gameId].player2Winnings = games[gameId].pot / 2;
+                        games[gameId].pot = 0;
+                        GameEnded(gameId);
+                    } else if (game.timeoutState == 1 || game.timeoutState == 2) { // win
+                        game.ended = true;
+                        if (msg.sender == game.player1) {
+                            game.winner = game.player2;
+                            games[gameId].player2Winnings = games[gameId].pot;
+                            games[gameId].pot = 0;
+                        } else {
+                            game.winner = game.player1;
+                            games[gameId].player1Winnings = games[gameId].pot;
+                            games[gameId].pot = 0;
+                        }
+                        GameEnded(gameId);
+                    } else {
+                        require(false);
+                    }
                 }
-                GameEnded(gameId);
-            } else {
-                require(false);
             }
-        }
-    }
 
     function TurnBasedGame(bool enableDebugging) {
         debug = enableDebugging;

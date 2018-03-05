@@ -62,36 +62,8 @@ contract XOGame is TurnBasedGame {
         GameJoined(gameId, games[gameId].player1, games[gameId].player1Alias, games[gameId].player2, player2Alias, gameStates[gameId].playerX, games[gameId].pot);
     }
 
-    /**
-     * Set mark atIndex for state after verification.
-    **/
-    function moveFromState(bytes32 gameId, int8[10] state, uint8 atIndex) notEnded(gameId) public {
-        // check if sender is one of players
-        require(games[gameId].player1 == msg.sender || games[gameId].player2 == msg.sender);
-        // check if step is made for the same situation as was
-        // TODO: check sigs?
-        // for (var i = 0; i < 10; ++i) {
-        //   require(state[i] == gameStates[gameId].state[i]);
-        // }
-        // find opponent to msg.sender
-        address opponent;
-        if (msg.sender == games[gameId].player1) {
-            opponent = games[gameId].player2;
-        } else {
-            opponent = games[gameId].player1;
-        }
-
-        int8 playerColor = msg.sender == gameStates[gameId].playerX ? int8(1) : int8(-1);
-
-        // apply state
-        gameStates[gameId].setState(state, playerColor);
-        games[gameId].nextPlayer = msg.sender;
-
-        // apply and verify move
-        move(gameId, atIndex);
-    }
-
     function move(bytes32 gameId, uint8 atIndex) notEnded(gameId) public {
+        require(!games[gameId].ended);
         if ((games[gameId].timeoutState == 2) &&
                 now >= (games[gameId].timeoutStarted + games[gameId].turnTime * 1 minutes) &&
                 msg.sender != games[gameId].nextPlayer) {
@@ -119,21 +91,14 @@ contract XOGame is TurnBasedGame {
         GameStateChanged(gameId, gameStates[gameId].state);
     }
 
-    // /* Explicit set game state. Only in debug mode */
-    // function setGameState(bytes32 gameId, int8[10] state, address nextPlayer) debugOnly public {
-    //     int8 playerColor = nextPlayer == gameStates[gameId].playerX ? int8(1) : int8(-1);
-    //     gameStates[gameId].setState(state, playerColor);
-    //     games[gameId].nextPlayer = nextPlayer;
-    //     GameStateChanged(gameId, gameStates[gameId].state);
-    // }
-
-    function checkForWinner(bytes32 gameId, address winner) public returns (bool) {
-        return gameStates[gameId].isPlayerWinner(winner);
+    function checkForWinner(bytes32 gameId) public view returns (bool) {
+        require(msg.sender == games[gameId].player1 || msg.sender == games[gameId].player2);
+        return (gameStates[gameId].isPlayerWinner(msg.sender) || gameStates[gameId].checkGameEnded());
     }
 
-    function endGameWithWinner(bytes32 gameId, address winner) public {
-        require(games[gameId].winner != 0); // Game already ended
-        require(gameStates[gameId].isPlayerWinner(winner));
+    function endGameWithWinner(bytes32 gameId, address winner) private {
+        require(msg.sender == games[gameId].player1 || msg.sender == games[gameId].player2);
+        require(!games[gameId].ended); // Game not ended
         
         if (games[gameId].player2 == winner) {
             // Player 1 lost, player 2 won
@@ -146,11 +111,17 @@ contract XOGame is TurnBasedGame {
             games[gameId].player1Winnings = games[gameId].pot;
             games[gameId].pot = 0;
         } else {
-            // Sender is not a participant of this game
-            throw;
+            // draw
+            games[gameId].player1Winnings = games[gameId].pot / 2;
+            games[gameId].player2Winnings = games[gameId].pot / 2;
+            games[gameId].pot = 0;
         }
 
         games[gameId].ended = true;
+        var game = games[gameId];
+        recordResult(game.player1, game.player2, game.winner);
+        ScoreUpdate(game.player1, getScore(game.player1));
+        ScoreUpdate(game.player2, getScore(game.player2));
         GameEnded(gameId);
     }
 
@@ -185,76 +156,20 @@ contract XOGame is TurnBasedGame {
       }
     }
 
-    /* The sender claims he has won the game. Starts a timeout. */
+    /* The sender claims he has won the game. */
     function claimWin(bytes32 gameId) notEnded(gameId) public {
-        super.claimWin(gameId);
+        require(msg.sender == games[gameId].player1 || msg.sender == games[gameId].player2);
 
-        // get the color of the player that wants to claim win
-        int8 otherPlayerColor = gameStates[gameId].playerX == msg.sender ? int8(-1) : int8(1);
-
-        // if he is not winner, the request is illegal
-        require(gameStates[gameId].isWinner(otherPlayerColor));
-        claimTimeoutEnded(gameId);
-    }
-
-    /*
-     * The sender (currently waiting player) claims that the other (turning)
-     * player timed out and has to provide a move, the other player could
-     * have done to prevent the timeout.
-     */
-    function claimTimeoutEndedWithMove(bytes32 gameId, uint8 atIndex) notEnded(gameId) public {
-        var game = games[gameId];
-        // just the two players currently playing
-        require(msg.sender == game.player1 || msg.sender == game.player2);
-        require(now >= game.timeoutStarted + game.turnTime * 1 minutes);
-        require(msg.sender != game.nextPlayer);
-        require(game.timeoutState == 2);
-
-        // TODO we need other move function
-        // move is valid if it does not throw
-        move(gameId, atIndex);
-
-        game.ended = true;
-        game.winner = msg.sender;
-        if (msg.sender == game.player1) {
-            games[gameId].player1Winnings = games[gameId].pot;
-            games[gameId].pot = 0;
-        } else {
-            games[gameId].player2Winnings = games[gameId].pot;
-            games[gameId].pot = 0;
+        address gameWinner;
+        if (gameStates[gameId].isPlayerWinner(games[gameId].player1)) {
+            gameWinner = games[gameId].player1;
+        } else if (gameStates[gameId].isPlayerWinner(games[gameId].player2)) {
+            gameWinner = games[gameId].player2;
+        } else if (!gameStates[gameId].checkGameEnded()) {
+            throw;
         }
 
-        // Update scores
-        recordResult(game.player1, game.player2, game.winner);
-        ScoreUpdate(game.player1, getScore(game.player1));
-        ScoreUpdate(game.player2, getScore(game.player2));
-        GameEnded(gameId);
+        endGameWithWinner(gameId, gameWinner);
     }
 
-    /* The sender claims a previously started timeout. */
-    function claimTimeoutEnded(bytes32 gameId) notEnded(gameId) public {
-        super.claimTimeoutEnded(gameId);
-
-        // Update scores
-        var game = games[gameId];
-        recordResult(game.player1, game.player2, game.winner);
-        ScoreUpdate(game.player1, getScore(game.player1));
-        ScoreUpdate(game.player2, getScore(game.player2));
-    }
-
-    /* A timeout can be confirmed by the non-initializing player. */
-    function confirmGameEnded(bytes32 gameId) notEnded(gameId) public {
-        super.confirmGameEnded(gameId);
-
-        // Update scores
-        var game = games[gameId];
-        recordResult(game.player1, game.player2, game.winner);
-        ScoreUpdate(game.player1, getScore(game.player1));
-        ScoreUpdate(game.player2, getScore(game.player2));
-    }
-
-    // /* This unnamed function is called whenever someone tries to send ether to the contract */
-    // function () {
-    //     throw; // Prevents accidental sending of ether
-    // }
 }

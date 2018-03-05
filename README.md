@@ -15,8 +15,10 @@ Basic tic-tac-toe game over logic of turn-based contract for ethereum blockchain
 
 4. Apply contracts to testnet: `truffle migrate`
 
-5. Serve interface: `npm run start`
+5. Install requirements: `npm install`
+
+6. Serve interface by webpack dev server: `npm run start`
 
 Interface would be served on `localhost:3000` by default.
 
-Interface make it possible to select one of available accounts to simulate multiplayer.
+Interface make it possible to select one of available accounts to simulate multi-player.

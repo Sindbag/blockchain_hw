@@ -11,10 +11,9 @@ import './App.css'
 
 class App extends Component {
     constructor(props) {
-        super(props)
+        super(props);
 
         this.state = {
-            storageValue: 0,
             web3: null,
             accounts: [],
             selectedAccountIdx: 0,
@@ -32,7 +31,7 @@ class App extends Component {
             to_join: '',
             games: {},
             gameStates: {},
-        }
+        };
 
         this.changeAccount = this.changeAccount.bind(this);
         this.handleInputChange = this.handleInputChange.bind(this);
@@ -43,6 +42,8 @@ class App extends Component {
         this.selectGame = this.selectGame.bind(this);
         this.updateState = this.updateState.bind(this);
         this.getGameData = this.getGameData.bind(this);
+        this.withdraw = this.withdraw.bind(this);
+        this.updateBalance = this.updateBalance.bind(this);
         // list my games: getGamesOfPlayer(addr)
         // list open games: getOpenGameIds()
         // start game: initGame(alias, playAsTIC, timer)
@@ -89,7 +90,7 @@ class App extends Component {
                     web3: results.web3,
                     accounts: results.web3.eth.accounts,
                     balance: results.web3.eth.getBalance(results.web3.eth.accounts[0]).toNumber(),
-                })
+                });
 
                 // Instantiate contract once web3 provided.
                 this.instantiateContract()
@@ -100,50 +101,68 @@ class App extends Component {
     }
 
     checkIsWinner(gameId, address) {
-        this.state.gameContract.checkForWinner(gameId, address, { from: address, to: this.state.gameContract.address }).then(
+        this.state.gameContract.checkForWinner.call(
+            gameId,
+            { from: address, to: this.state.gameContract.address }
+        ).then(
             (result) => {
-                console.log(result);
-                this.state.gameContract.endGameWithWinner(gameId, address, { from: address, to: this.state.gameContract.address });
+                console.log('ended:', result);
+                if (result) {
+                    this.claimWin(gameId);
+                }
             }
-        ).catch((result) => console.log('not a winner', result));
+        ).catch((result) => console.log('failed to check a winner', result));
     }
 
     instantiateContract() {
-        const contract = require('truffle-contract')
-        const XOGame = contract(XOGameContract)
-        XOGame.setProvider(this.state.web3.currentProvider)
+        const contract = require('truffle-contract');
+        const XOGame = contract(XOGameContract);
+        XOGame.setProvider(this.state.web3.currentProvider);
 
         // Declaring this for later so we can chain functions on SimpleStorage.
-        var XOGameInstance
+        var XOGameInstance;
         // Get accounts.
         this.state.web3.eth.getAccounts((error, accounts) => {
             XOGame.deployed().then((instance) => {
-                XOGameInstance = instance
+                XOGameInstance = instance;
                 // Get the value from the contract to prove it worked.
                 const events = XOGameInstance.allEvents();
                 events.watch((err, res) => {
                     if (err) console.log(err);
                     else {
-                        console.log(res);
+                        console.log('Fetched event', res);
                         switch (res.event) {
                             case 'MakeMove':
-                                console.log(res.args)
+                                console.log('Move made', res.args);
                                 break;
                             case 'GameStateChanged':
+                                console.log('Game state changed', res.args);
                                 this.checkGameState(res.args.gameId);
-                                this.checkIsWinner(res.args.gameId, this.state.accounts[this.state.selectedAccountIdx]);
+                                this.checkIsWinner(res.args.gameId,
+                                    this.state.accounts[this.state.selectedAccountIdx]);
                                 break;
                             case 'GameEnded':
                                 console.log('game ended', res.args);
+                                this.checkGameState(res.args.gameId);
+                                break;
+                            case 'GameInitialized':
+                                console.log('game created', res.args);
+                                this.checkGameState(res.args.gameId);
                                 break;
                             default:
                                 break;
                         }
                     }
-                })
+                });
                 return this.setState({ gameContract: XOGameInstance, accounts: accounts})
             }).then(() => this.updateState())
         })
+    }
+
+    updateBalance() {
+        this.setState({
+            balance: this.state.web3.eth.getBalance(this.state.web3.eth.accounts[this.state.selectedAccountIdx]).toNumber(),
+        });
     }
 
     changeAccount(event) {
@@ -153,7 +172,7 @@ class App extends Component {
             myGames: [],
             state: '',
             balance: this.state.web3.eth.getBalance(this.state.accounts[+event.target.value]).toNumber()
-        })
+        });
         this.showMessage('Loading...');
         this.updateState(this.state.accounts[+event.target.value]);
         this.showMessage('');
@@ -163,21 +182,27 @@ class App extends Component {
     checkGameState(game) {
         // game = game || this.state.selectedGame;
         this.showMessage('Waiting...');
-        let gameStates, games;
-        return this.state.gameContract.getCurrentGameState.call(game)
-            .then((result) => {
-                this.showMessage('Updated.');
-                gameStates = this.state.gameStates;
-                gameStates[game] = result.map(n => n.toNumber());
-                return this.state.gameContract.getXPlayer.call(game);
-            }).then((result) => {
-                games = this.state.games;
-                games[game].xplayer = result;
-                return ;
-            }).then(() => {
-                this.setState({gameStates: gameStates, games: games})
-                return game;
-            })
+        let gameStates, games = this.state.games;
+        if (games[game]) {
+            return this.state.gameContract.getCurrentGameState.call(game)
+                .then((result) => {
+                    this.showMessage('Updated.');
+                    gameStates = this.state.gameStates;
+                    gameStates[game] = result.map(n => n.toNumber());
+                    return this.state.gameContract.getXPlayer.call(game);
+                }).then((result) => {
+                    console.log('X player', result);
+                    games = this.state.games;
+                    games[game].xplayer = result;
+                }).then(() => {
+                    this.setState({gameStates: gameStates, games: games});
+                    return game;
+                }).catch((err) => {
+                    console.log('Error fetching game state', err)
+                })
+        } else {
+            return new Promise(() => setTimeout(() => this.checkGameState(game), 100));
+        }
     }
 
     makeMove(pos) {
@@ -191,16 +216,17 @@ class App extends Component {
             {
                 from: this.state.accounts[this.state.selectedAccountIdx],
                 to: this.state.gameContract.address,
-                gas: 15000000,
+                gas: 30000000,
             })
         .then((result) => {
-            console.log(result);
+            console.log('Tried to make a move', result);
             this.showMessage('You have made a move!');
             for (var i = 0; i < result.logs.length; i++) {
                 var log = result.logs[i];
                 if (log.event === "MakeMove" && log.args.gameId === game) {
-                // We found the event!
-                break;
+                    // We found the event!
+                    console.log('Made move');
+                    break;
                 }
             }
         }).then(
@@ -208,7 +234,10 @@ class App extends Component {
                 this.checkGameState(game);
             }
         ).then(() => 
-            this.claimWin(game))
+            this.checkIsWinner(game, this.state.accounts[this.state.selectedAccountIdx])
+        ).catch((err) => {
+            console.log('Error while moving', err);
+        })
     }
 
     changeState(newState) {
@@ -221,16 +250,19 @@ class App extends Component {
     getGameData(game) {
         return this.state.gameContract.games.call(game)
             .then(res => {
-                let [p1, p2, a1, a2, np, winner, ended, pot] = res;
+                console.log('Game fetched', res);
+                let [p1, p2, a1, a2, np, winner, ended, pot, p1win, p2win] = res;
                 let games = this.state.games;
                 games[game] = {
                     player1: p1,
                     player2: p2,
                     alias1: a1,
                     alias2: a2,
-                    pot: pot,
+                    pot: pot.toNumber(),
                     winner: winner,
-                    ended: ended,
+                    ended: ended === true,
+                    player1win: p1win.toNumber(),
+                    player2win: p2win.toNumber(),
                     nextPlayer: np, // next player
                 };
                 return this.setState({games: games});
@@ -250,15 +282,17 @@ class App extends Component {
             this.setState({myGames: result});
             return result.map(g => this.checkGameState(g).then(this.getGameData(g)));
         });
+
         // update open games
         this.state.gameContract.getOpenGameIds.call().then((result) => {
-            
             // get list of open games
-            this.setState({openGames: result})
+
+            this.setState({openGames: result});
             return result.map(game => 
                 this.getGameData(game)
             )
-        })
+        });
+        this.updateBalance();
         this.forceUpdate();
     }
 
@@ -268,10 +302,10 @@ class App extends Component {
 
     createNewGame(event) {
         event.preventDefault();
-        this.showMessage('Game is initializing...')
+        this.showMessage('Game is initializing...');
         this.state.gameContract.initGame(
             this.state.p1_alias,
-            this.state.playX ? true : false,
+            this.state.playX,
             5,
             {
                 from: this.state.accounts[this.state.selectedAccountIdx],
@@ -280,22 +314,25 @@ class App extends Component {
                 gas: 150000000,
             }
         ).then((result) => {
-            console.log(result.logs[0].args.gameId)
+            console.log(result.logs[0].args.gameId);
             this.showMessage('');
             let game = result.logs[0].args.gameId;
             let gameStates = this.state.gameStates;
-            gameStates[game] = [0,0,0,0,0,0,0,0,0, this.state.playX ? 1 : -1]
+            gameStates[game] = [0,0,0,0,0,0,0,0,0, this.state.playX ? 1 : -1];
             let games = this.state.games;
+            // TODO: make Game class
             games[game] = {
                 player1: this.state.accounts[this.state.selectedAccountIdx],
                 player2: '0x000000000000000',
                 alias1: this.state.p1_alias,
                 alias2: '',
                 pot: this.state.game_pot * 500,
+                player1win: 0,
+                player2win: 0,
                 winner: '0x0000000000000',
                 ended: false,
                 nextPlayer: this.state.playX ? this.state.accounts[this.state.selectedAccountIdx] : '0x0000000000', // next player
-            }
+            };
             return this.setState({
                 selectedGame: game,
                 state: 'awaiting',
@@ -307,7 +344,7 @@ class App extends Component {
 
     joinGame(event) {
         event.preventDefault();
-        this.showMessage(`Joining ${this.state.to_join}...`)
+        this.showMessage(`Joining ${this.state.to_join}...`);
         this.state.gameContract.joinGame(
             this.state.to_join,
             this.state.p2_alias,
@@ -319,6 +356,7 @@ class App extends Component {
             }
         ).then(() => {
             this.showMessage('');
+            this.updateBalance();
             return this.setState({
                 selectedGame: this.state.to_join,
                 state: 'play'
@@ -327,31 +365,47 @@ class App extends Component {
     }
 
     selectGame(game) {
-        this.showMessage('Loading game data...')
+        this.showMessage('Loading game data...');
         this.checkGameState(game).then(() => {
             this.showMessage('')
             return this.setState({state: 'play', selectedGame: game})
         });
     }
 
+    withdraw(gameId) {
+        this.showMessage('Withdrawing money');
+        this.state.gameContract.withdraw(gameId, {
+            from: this.state.accounts[this.state.selectedAccountIdx],
+            to: this.state.gameContract.address
+        }).then((result) => {
+                console.log(result);
+                this.showMessage('');
+        }).catch((err) => {
+            console.log('Error while withdrawing money', gameId, err)
+        });
+    }
+
     claimWin(game) {
-        this.state.gameContract.claimWin.call(game,
+        this.state.gameContract.claimWin(game,
             { from: this.state.accounts[this.state.selectedAccountIdx],
                 to: this.state.gameContract.address,
-                gas: 20000000,
+                gas: 40000000,
             }
         ).then((result) => {
-            console.log(result.logs);
+            console.log('game ended with winner', result, result.logs);
             for (var i = 0; i < result.logs.length; i++) {
                 var log = result.logs[i];
 
                 if (log.event === "GameEnded" && log.args.gameId === game) {
                     // We found the event!
+                    console.log('End game event found!');
                     let g = this.state.games;
-                    g[game].ended = true;
-                    g[game].winner = log.args.winner;
-                    this.setState({games: g})
-                    this.showMessage('You won!')
+                    if (g[game]) {
+                        g[game].ended = true;
+                        g[game].winner = log.args.winner;
+                        this.setState({games: g});
+                        this.showMessage('Game ended!');
+                    }
                     break;
                 }
             }
@@ -383,13 +437,19 @@ class App extends Component {
                             <h1> Good to Go! </h1>
                         </div>
                     </div>
-                    { this.state.state !== 'show' && this.state.myGames.length > 0 && this.state.myGames.map(game => <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Awaiting game: {game}<br/></span>)}
+                    { this.state.state !== 'show' && this.state.myGames.length > 0 &&
+                        this.state.myGames.map(game => (
+                            this.state.games[game] &&
+                            !this.state.games[game].ended &&
+                            <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Awaiting game: {game}<br/></span>
+                        ))
+                    }
                     
                     { (this.state.state === 'awaiting') && <h3>Awaiting your opponent!</h3>}
                     { (this.state.state === 'play') && <h3>You are in game!</h3>}
                     
                     { (this.state.selectedGame.length > 0 && (this.state.state === 'play' || this.state.state === 'awaiting')) && 
-                        <GameView 
+                        <GameView
                             gameId={this.state.selectedGame}
                             state={this.state.gameStates[this.state.selectedGame]} 
                             gameInfo={this.state.games[this.state.selectedGame]}
@@ -425,25 +485,45 @@ class App extends Component {
                             <input onChange={this.handleInputChange}
                                 name='p2_alias' id='p2_alias' key='p2_alias' value={this.state.p2_alias} placeholder='Your alias' />
                             <br />
-                            {this.state.openGames.map((game, idx) => (<div key={idx}>
-                                <label htmlFor={'join-' + idx}>
-                                <input
-                                    type='radio'
-                                    id={'join-'+idx}
-                                    value={game}
-                                    name='to_join'
-                                    checked={this.state.to_join === game} 
-                                    onChange={this.handleInputChange}/>
-                                    P1: {this.state.games[game].alias1}, Pot: {this.state.games[game].pot.toNumber() * 2}</label><br />
+                            {this.state.openGames.map((game, idx) => (this.state.games[game] && !this.state.games[game].ended &&
+                                <div key={idx}>
+                                    <label htmlFor={'join-' + idx}>
+                                    <input
+                                        type='radio'
+                                        id={'join-'+idx}
+                                        value={game}
+                                        name='to_join'
+                                        checked={this.state.to_join === game}
+                                        onChange={this.handleInputChange}/>
+                                        P1: {this.state.games[game].alias1}, Pot: {this.state.games[game].pot * 2}
+                                    </label><br />
                                 </div>
                             ))}
                             <button type='submit'>Join game!</button>
                         </form>
                     )}
-                    { this.state.state === 'show' && (this.state.myGames.length > 0) && this.state.myGames.map(game => 
-                        <span key={game} style={{'cursor': 'pointer'}} onClick={() => this.selectGame(game)}>Game: {game}<br/>
-                            {JSON.stringify(this.state.games[game]) + '\n\n'}
-                        </span>)}
+                    { this.state.state === 'show' && (this.state.myGames.length > 0) &&
+                        this.state.myGames.map(game => (
+                            this.state.games[game] && (
+                                <div key={game} className="pure-u-1-2" style={{'cursor': 'pointer', padding: '15px', backgroundColor: '#b6d0ff'}}>
+                                    <h4 onClick={() => this.selectGame(game)}>Game: {game}</h4>
+                                    <p key={"p1"}>P1: {this.state.games[game].player1} (<b>{this.state.games[game].alias1}</b>)</p>
+                                    <p key={"p2"}>P2: {this.state.games[game].player2} (<b>{this.state.games[game].alias2}</b>)</p>
+                                    <p key={"pot"}>Pot: {this.state.games[game].pot || this.state.games[game].player1win + this.state.games[game].player2win}</p>
+                                    <p key={"winner"}>Winner: {this.state.games[game].winner === this.state.games[game].player1 ? 'P1' : 'P2'}</p>
+                                    {(
+                                        this.state.games[game].winner === this.state.accounts[this.state.selectedAccountIdx] &&
+                                        (
+                                            this.state.games[game].player1win > 0 ||
+                                            this.state.games[game].player2win > 0
+                                        )
+                                    ) && (
+                                        <button className="pure-button" onClick={() => this.withdraw(game)}>Withdraw</button>
+                                    )}
+                                </div>
+                            )
+                        ))
+                    }
                 </main>
             </div>
         );

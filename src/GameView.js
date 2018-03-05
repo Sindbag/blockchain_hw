@@ -72,20 +72,23 @@ export const GameView = ({gameId, state, gameInfo, player, isXPlayer, makeMove})
     if (!(state && state.length === 10)) {
         err = 'State is broken!';
     }
-    console.log(state);
+    console.log('Game state', state);
     const nextPlayer = state[9] || '';
     const playerMap = {'1': 'X', '-1': 'O', '': '?'};
-    // const myTurn = playerAddr === gameInfo.nextPlayer;
 
-    const _make = (key) => makeMove(key);
-    const turn = (isXPlayer && nextPlayer === 1) ? true : (!isXPlayer && nextPlayer === -1) ? true : false;
+    const _make = gameInfo.ended ? () => {} : (key) => makeMove(key);
+    const turn = (isXPlayer && nextPlayer === 1) ? true : (!isXPlayer && nextPlayer === -1);
 
     return (
         <div>
             <h4>{gameId}</h4>
+            <div style={{float: 'right'}}>
+                <h5>Player 1: <b>{gameInfo.alias1}</b> {gameInfo.player1 === player && "(you)"}</h5>
+                <h5>Player 2: <b>{gameInfo.alias2}</b> {gameInfo.player2 === player && "(you)"}</h5>
+            </div>
             {err && <span style={{padding: '10 15px', margin: '5px', bgcolor: '#eedcdc', color: 'black'}}>{err}</span>}
             { !gameInfo.ended && <h4>Turn for: {playerMap[nextPlayer]} {turn && <b>(Your turn!)</b>}</h4>}
-            { (gameInfo.ended && gameInfo.winner === player) && <h2>You Won!</h2>}
+            { (gameInfo.winner === player) && <h2>You Won!</h2>}
             <table style={{cellborder: '10px', border: '1px solid #ccc', margin: '0 auto'}}>
             <tbody>
                 {[...Array(3)].map((_, j) => 
